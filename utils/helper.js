@@ -1,3 +1,5 @@
+import { getCollection } from "../config/database";
+
 export function validateOrder(data) {
   if (!data.customerName?.trim()) {
     return {
@@ -85,4 +87,22 @@ export function createOrderDocument(orderData, orderId, totals) {
     estimatedTime: null,
     createdAt: new Date(),
   };
+}
+
+
+export function isValidStatusTransiton(currentStatus, newStatus){
+  const validTransition = {
+    "pending": ['confirmed', 'cancelled'], 
+    "confirmed": ['preparing', 'cancelled'],
+    "preparing": ['ready', "cancelled"],
+    "ready": ["out_for_delivery", "cancelled"],
+    "out_for_delivery": ['delivered'],
+    "delivered": [],
+    "cancelled": []
+
+  }
+  return validTransitions[currentStatus]?.includes(newStatus)|| false;
+
+  
+
 }
