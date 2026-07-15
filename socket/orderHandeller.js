@@ -223,7 +223,39 @@ export const orderHandeler = (io, socket) => {
           success: false,
           message: "Can not accept this order",
         });
+
+        const estimatedTime = data.estimatedTime || 30;
+
+        const result = await orderCollection.findOneAndUpdate(
+          {orderId: data.orderId},
+          {
+            $set: {status: 'confirmed', estimatedTime, updatedAt: new Date()},
+            $push:{
+              statusHistory:{
+                status: 'confirmed',
+                timeStamp: new Date(),
+                by: socket.id,
+                note: `Accepted with ${estimatedTime} munite estimated time.`
+              }
+            },
+          },
+          {
+            returnDocument: 'after'
+          }
+        )
+
+        io.to(`order-${data.orderId}`).emmit('orderAccepted', {orderId: data.orderId}, estimatedTime)
+        socket.on('admins').emit("orderAcceptedByAdmin", {ordeId: data.orderId})
+
+        callback({success: true, order: result});
+
       }
-    } catch (error) {}
+    } catch (error) {
+      callback({success: false, message: error.message})
+    }
   });
+
+  
+
+
 };
