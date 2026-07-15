@@ -1,11 +1,12 @@
 // import { validateOrder } from "./utils/helper"
 
-import { Timestamp } from "mongodb";
+import { ReturnDocument, Timestamp } from "mongodb";
 import { getCollection } from "../config/database.js";
 import {
   calculateTotals,
   createOrderDocument,
   generateOrderId,
+  isValidStatusTransiton,
   validateOrder,
 } from "../utils/helper.js";
 
@@ -59,7 +60,7 @@ export const orderHandeler = (io, socket) => {
     }
   });
 
-  // cancell order
+  // cancel order
 
   socket.on("cancelOrder", async (data, callback) => {
     try {
@@ -156,6 +157,73 @@ export const orderHandeler = (io, socket) => {
         .toArray();
 
       callback({ success: true, orders });
+    } catch (error) {
+      callback({ success: false, message: "failed to load orders" });
+    }
+  });
+
+  // order status update
+  socket.on("updateOrderStatus", async (data, callback) => {
+    try {
+      const orderCollection = getCollection("orders");
+      const order = await orderCollection.findOne({ orderId: data.orderId });
+      if (!order) {
+        return callback({ success: false, message: "Order not found" });
+      }
+      if (!isValidStatusTransiton(order.status, data.newStatus)) {
+        return callback({
+          success: false,
+          message: "Invalid status transition",
+        });
+
+        const result = await orderCollection.findOneAndUpdate(
+          { orderId: date.orderId },
+          {
+            $set: { status: data.newStatus, updatedAt: new Date() },
+            $push: {
+              statusHistory: {
+                status: data.newStatus,
+                timeStamp: new Date(),
+                by: socket.id,
+                note: "Status updated by admin",
+              },
+            },
+          },
+          { retunDocument: "after" },
+        );
+      }
+      io.to(`order-${data.orderId}`).emit("statusUpdated", {
+        orderId: data.orderId,
+        status: data.newStatus,
+        order: result,
+      });
+
+      socket.to("admin").emit("orderStatusChanged", {
+        orderId: data.orderId,
+        newStatus: data.newStatus,
+      });
+      callback({ success: true, order: result });
+    } catch (error) {
+      callback({ successs: false, message: "Failed to update order status." });
+    }
+  });
+
+  // accept order
+
+  socket.on("acceptOrder", async (data, callback) => {
+    try {
+      if (!socket.isAdmin) {
+        return callback({ success: false, message: "Unauthorize" });
+      }
+      const orderCollection = getCollection("orders");
+      const order = await orderCollection.findOne({ orderId: data.orderId });
+
+      if (!order || order.status !== "pending") {
+        return callback({
+          success: false,
+          message: "Can not accept this order",
+        });
+      }
     } catch (error) {}
   });
 };
